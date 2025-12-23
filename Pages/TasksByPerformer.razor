@@ -1,0 +1,76 @@
+﻿@page "/tasks-by-performer"
+@using WebWorkshop.Models
+@inject WebWorkshop.Services.GraphQLClient Gql
+
+<h1>Задания по исполнителю</h1>
+
+<div class="mb-2">
+    <label class="form-label">PerformerId</label>
+    <input type="number" class="form-control" @bind="_performerId" />
+</div>
+
+<button class="btn btn-primary" @onclick="Load">Показать</button>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="mt-2" style="color:red">@_error</div>
+}
+
+@if (_tasks is not null)
+{
+    <table class="table mt-3">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Название</th>
+                <th>Статус</th>
+                <th>Срок</th>
+                <th>Стоимость</th>
+                <th>ProjectId</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _tasks)
+            {
+                <tr>
+                    <td>@t.Id</td>
+                    <td>@t.Title</td>
+                    <td>@t.Status</td>
+                    <td>@t.DueDateUtc</td>
+                    <td>@t.Cost</td>
+                    <td>@t.ProjectId</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private int _performerId = 1;
+    private List<TaskDto>? _tasks;
+    private string? _error;
+
+    private async Task Load()
+    {
+        _error = null;
+        _tasks = null;
+
+        const string query =
+            "query($id: Int!) { tasksByPerformer(performerId: $id) { id title status dueDateUtc cost projectId performerId } }";
+
+        try
+        {
+            var data = await Gql.QueryAsync<Response>(query, new { id = _performerId });
+            _tasks = data.TasksByPerformer;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private sealed class Response
+    {
+        public List<TaskDto> TasksByPerformer { get; set; } = new();
+    }
+}

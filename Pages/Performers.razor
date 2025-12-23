@@ -1,0 +1,392 @@
+﻿@page "/performers"
+@using WebWorkshop.Models
+@inject WebWorkshop.Services.GraphQLClient Gql
+
+<h1>Исполнители</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div style="color:red">@_error</div>
+}
+
+<div class="card p-3 mb-3">
+    <h5>Добавить исполнителя</h5>
+
+    <div class="row g-2 align-items-center">
+        <div class="col-md-3">
+            <input class="form-control" placeholder="ФИО" @bind="_newFullName" />
+        </div>
+        <div class="col-md-3">
+            <input class="form-control" placeholder="Email" @bind="_newEmail" />
+        </div>
+        <div class="col-md-2">
+            <input class="form-control" placeholder="Телефон" @bind="_newPhone" />
+        </div>
+        <div class="col-md-3">
+            <input class="form-control" placeholder="Должность" @bind="_newPosition" />
+        </div>
+        <div class="col-md-1 d-grid">
+            <button class="btn btn-primary"
+                    @onclick="CreatePerformer"
+                    disabled="@(!_canCreatePerformer || _busy)">
+                +
+            </button>
+        </div>
+    </div>
+
+    @if (!_canCreatePerformer)
+    {
+        <small class="text-muted">Заполните все поля, чтобы добавить исполнителя.</small>
+    }
+</div>
+
+@if (_performers is null)
+{
+    <p>Загрузка...</p>
+}
+else
+{
+    <div class="d-flex align-items-center justify-content-between mb-2">
+        <div>
+            <b>Страница:</b> @_page / @_totalPages
+            <span class="text-muted"> (всего: @_performers.Count)</span>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-outline-secondary"
+                    @onclick="PrevPage"
+                    disabled="@(_page <= 1)">
+                Назад
+            </button>
+            <button class="btn btn-outline-secondary"
+                    @onclick="NextPage"
+                    disabled="@(_page >= _totalPages)">
+                Вперёд
+            </button>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>ФИО</th>
+                <th>Email</th>
+                <th>Телефон</th>
+                <th>Должность</th>
+                <th style="width:280px;">Действия</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var p in _pagedPerformers)
+            {
+                var isEdit = _editId == p.Id;
+
+                <tr>
+                    <td>@p.Id</td>
+
+                    @if (!isEdit)
+                    {
+                        <td>@p.FullName</td>
+                        <td>@p.Email</td>
+                        <td>@p.Phone</td>
+                        <td>@p.Position</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-secondary me-2"
+                                    @onclick="() => StartEdit(p)"
+                                    disabled="@_busy">
+                                Редактировать
+                            </button>
+
+                            <button class="btn btn-sm btn-outline-danger"
+                                    @onclick="() => DeletePerformer(p.Id)"
+                                    disabled="@_busy">
+                                Удалить
+                            </button>
+                        </td>
+                    }
+                    else
+                    {
+                        <td><input class="form-control form-control-sm" @bind="_editFullName" /></td>
+                        <td><input class="form-control form-control-sm" @bind="_editEmail" /></td>
+                        <td><input class="form-control form-control-sm" @bind="_editPhone" /></td>
+                        <td><input class="form-control form-control-sm" @bind="_editPosition" /></td>
+                        <td>
+                            <button class="btn btn-sm btn-success me-2"
+                                    @onclick="SaveEdit"
+                                    disabled="@(!_canSaveEdit || _busy)">
+                                Сохранить
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary me-2"
+                                    @onclick="CancelEdit"
+                                    disabled="@_busy">
+                                Отмена
+                            </button>
+
+                            <button class="btn btn-sm btn-outline-danger"
+                                    @onclick="() => DeletePerformer(p.Id)"
+                                    disabled="@_busy">
+                                Удалить
+                            </button>
+
+                            @if (!_canSaveEdit)
+                            {
+                                <div><small class="text-muted">Для сохранения заполните все поля.</small></div>
+                            }
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<PerformerDto>? _performers;
+    private string? _error;
+    private bool _busy;
+
+    
+    private const int PageSize = 10;
+    private int _page = 1;
+
+    private int _totalPages => _performers is null || _performers.Count == 0
+        ? 1
+        : (int)Math.Ceiling(_performers.Count / (double)PageSize);
+
+    private IEnumerable<PerformerDto> _pagedPerformers =>
+        _performers is null
+            ? Enumerable.Empty<PerformerDto>()
+            : _performers.Skip((_page - 1) * PageSize).Take(PageSize);
+
+    
+    private string _newFullName = "";
+    private string _newEmail = "";
+    private string _newPhone = "";
+    private string _newPosition = "";
+
+    
+    private int? _editId;
+    private string _editFullName = "";
+    private string _editEmail = "";
+    private string _editPhone = "";
+    private string _editPosition = "";
+
+    private bool _canCreatePerformer =>
+        !string.IsNullOrWhiteSpace(_newFullName) &&
+        !string.IsNullOrWhiteSpace(_newEmail) &&
+        !string.IsNullOrWhiteSpace(_newPhone) &&
+        !string.IsNullOrWhiteSpace(_newPosition);
+
+    private bool _canSaveEdit =>
+        !string.IsNullOrWhiteSpace(_editFullName) &&
+        !string.IsNullOrWhiteSpace(_editEmail) &&
+        !string.IsNullOrWhiteSpace(_editPhone) &&
+        !string.IsNullOrWhiteSpace(_editPosition);
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private void PrevPage()
+    {
+        if (_page > 1) _page--;
+        CancelEdit();
+    }
+
+    private void NextPage()
+    {
+        if (_page < _totalPages) _page++;
+        CancelEdit();
+    }
+
+    private void EnsurePageInRange()
+    {
+        if (_page > _totalPages) _page = _totalPages;
+        if (_page < 1) _page = 1;
+    }
+
+    private async Task Load()
+    {
+        _error = null;
+
+        const string q = "query { performers { id fullName email phone position } }";
+        try
+        {
+            var data = await Gql.QueryAsync<Response>(q);
+            _performers = data.Performers ?? new();
+            EnsurePageInRange();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task CreatePerformer()
+    {
+        if (!_canCreatePerformer) return;
+
+        _error = null;
+        _busy = true;
+
+        const string m =
+            "mutation($input: PerformerCreateInput!) { createPerformer(input: $input) { ok error data { id } } }";
+
+        try
+        {
+            var vars = new
+            {
+                input = new
+                {
+                    fullName = _newFullName.Trim(),
+                    email = _newEmail.Trim(),
+                    phone = _newPhone.Trim(),
+                    position = _newPosition.Trim()
+                }
+            };
+
+            var res = await Gql.QueryAsync<CreatePerformerResponse>(m, vars);
+            if (!res.CreatePerformer.Ok)
+            {
+                _error = res.CreatePerformer.Error ?? "Ошибка создания";
+                return;
+            }
+
+            _newFullName = _newEmail = _newPhone = _newPosition = "";
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void StartEdit(PerformerDto p)
+    {
+        _error = null;
+        _editId = p.Id;
+
+        _editFullName = p.FullName;
+        _editEmail = p.Email;
+        _editPhone = p.Phone;
+        _editPosition = p.Position;
+    }
+
+    private void CancelEdit()
+    {
+        _editId = null;
+        _editFullName = _editEmail = _editPhone = _editPosition = "";
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_editId is null) return;
+        if (!_canSaveEdit) return;
+
+        _error = null;
+        _busy = true;
+
+        const string m =
+            "mutation($id: Int!, $input: PerformerUpdateInput!) { updatePerformer(id: $id, input: $input) { ok error data { id } } }";
+
+        try
+        {
+            var vars = new
+            {
+                id = _editId.Value,
+                input = new
+                {
+                    fullName = _editFullName.Trim(),
+                    email = _editEmail.Trim(),
+                    phone = _editPhone.Trim(),
+                    position = _editPosition.Trim()
+                }
+            };
+
+            var res = await Gql.QueryAsync<UpdatePerformerResponse>(m, vars);
+            if (!res.UpdatePerformer.Ok)
+            {
+                _error = res.UpdatePerformer.Error ?? "Ошибка сохранения";
+                return;
+            }
+
+            CancelEdit();
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeletePerformer(int id)
+    {
+        _error = null;
+        _busy = true;
+
+        const string m = "mutation($id: Int!) { deletePerformer(id: $id) { ok error data } }";
+
+        try
+        {
+            var res = await Gql.QueryAsync<DeletePerformerResponse>(m, new { id });
+            if (!res.DeletePerformer.Ok)
+            {
+                _error = res.DeletePerformer.Error ?? "Ошибка удаления";
+                return;
+            }
+
+            if (_editId == id) CancelEdit();
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed class Response
+    {
+        public List<PerformerDto> Performers { get; set; } = new();
+    }
+
+    private sealed class CreatePerformerResponse
+    {
+        public PayloadPerformer CreatePerformer { get; set; } = new();
+    }
+
+    private sealed class UpdatePerformerResponse
+    {
+        public PayloadPerformer UpdatePerformer { get; set; } = new();
+    }
+
+    private sealed class DeletePerformerResponse
+    {
+        public PayloadBool DeletePerformer { get; set; } = new();
+    }
+
+    private sealed class PayloadPerformer
+    {
+        public bool Ok { get; set; }
+        public string? Error { get; set; }
+        public PerformerDto? Data { get; set; }
+    }
+
+    private sealed class PayloadBool
+    {
+        public bool Ok { get; set; }
+        public string? Error { get; set; }
+        public bool Data { get; set; }
+    }
+}

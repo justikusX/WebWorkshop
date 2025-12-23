@@ -1,0 +1,66 @@
+﻿@page "/projects"
+@using WebWorkshop.Models
+@inject WebWorkshop.Services.GraphQLClient Gql
+
+<h1>Проекты</h1>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div style="color:red">@_error</div>
+}
+
+@if (_projects is null)
+{
+    <p>Загрузка...</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Code</th>
+                <th>Название</th>
+                <th>Статус</th>
+                <th>CustomerId</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in _projects)
+            {
+                <tr>
+                    <td>@p.Id</td>
+                    <td>@p.Code</td>
+                    <td>@p.Name</td>
+                    <td>@p.Status</td>
+                    <td>@p.CustomerId</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ProjectDto>? _projects;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        const string query = "query { projects { id code name status customerId } }";
+
+        try
+        {
+            var data = await Gql.QueryAsync<Response>(query);
+            _projects = data.Projects;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private sealed class Response
+    {
+        public List<ProjectDto> Projects { get; set; } = new();
+    }
+}

@@ -4,68 +4,114 @@
 
 <h1>Задания по исполнителю</h1>
 
-<div class="mb-2">
+<div class="mb-3" style="max-width: 420px;">
     <label class="form-label">PerformerId</label>
-    <input type="number" class="form-control" @bind="_performerId" />
-</div>
 
-<button class="btn btn-primary" @onclick="Load">Показать</button>
+    <input type="number"
+           class="form-control"
+           @bind-value="_performerId"
+           @bind-value:event="oninput" />
+
+    <button class="btn btn-primary mt-2"
+            @onclick="Load"
+            disabled="@_busy">
+        Показать
+    </button>
+</div>
 
 @if (!string.IsNullOrWhiteSpace(_error))
 {
-    <div class="mt-2" style="color:red">@_error</div>
+    <div style="color:red">@_error</div>
 }
 
-@if (_tasks is not null)
+@if (_busy)
 {
-    <table class="table mt-3">
-        <thead>
-            <tr>
-                <th>Id</th>
-                <th>Название</th>
-                <th>Статус</th>
-                <th>Срок</th>
-                <th>Стоимость</th>
-                <th>ProjectId</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var t in _tasks)
-            {
+    <p>Загрузка...</p>
+}
+else if (_tasks is not null)
+{
+    if (_tasks.Count == 0)
+    {
+        <p class="text-muted">Нет заданий для исполнителя @_performerId</p>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
                 <tr>
-                    <td>@t.Id</td>
-                    <td>@t.Title</td>
-                    <td>@t.Status</td>
-                    <td>@t.DueDateUtc</td>
-                    <td>@t.Cost</td>
-                    <td>@t.ProjectId</td>
+                    <th>Id</th>
+                    <th>Название</th>
+                    <th>Описание</th>
+                    <th>Стоимость</th>
+                    <th>Статус</th>
+                    <th>PerformerId</th>
+                    <th>ProjectId</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var t in _tasks)
+                {
+                    <tr>
+                        <td>@t.Id</td>
+                        <td>@t.Title</td>
+                        <td>@t.DueDateUtc</td>
+                        <td>@t.Cost</td>
+                        <td>@t.Status</td>
+                        <td>@t.PerformerId</td>
+                        <td>@t.ProjectId</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 }
 
 @code {
     private int _performerId = 1;
-    private List<TaskDto>? _tasks;
+    private bool _busy;
     private string? _error;
+
+    private List<TaskDto>? _tasks;
 
     private async Task Load()
     {
         _error = null;
         _tasks = null;
 
-        const string query =
-            "query($id: Int!) { tasksByPerformer(performerId: $id) { id title status dueDateUtc cost projectId performerId } }";
+        if (_performerId <= 0)
+        {
+            _error = "Введите корректный PerformerId (больше 0).";
+            return;
+        }
+
+        _busy = true;
+
+        
+        const string q = @"
+query($performerId: Int!) {
+  tasksByPerformer(performerId: $performerId) {
+    id
+    title
+    description
+    cost
+    status
+    performerId
+    projectId
+  }
+}";
 
         try
         {
-            var data = await Gql.QueryAsync<Response>(query, new { id = _performerId });
-            _tasks = data.TasksByPerformer;
+            var data = await Gql.QueryAsync<Response>(q, new { performerId = _performerId });
+            _tasks = data.TasksByPerformer ?? new();
         }
         catch (Exception ex)
         {
             _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
         }
     }
 

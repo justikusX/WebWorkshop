@@ -4,49 +4,66 @@
 
 <h1>Проекты</h1>
 
-@if (!string.IsNullOrWhiteSpace(_error))
+@if (!string.IsNullOrEmpty(_error))
 {
     <div style="color:red">@_error</div>
 }
 
-@if (_projects is null)
+@if (_loading)
 {
     <p>Загрузка...</p>
 }
-else
+else if (_projects is not null)
 {
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Id</th>
-                <th>Code</th>
-                <th>Название</th>
-                <th>Статус</th>
-                <th>CustomerId</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var p in _projects)
-            {
+    if (_projects.Count == 0)
+    {
+        <p class="text-muted">Проекты отсутствуют</p>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
                 <tr>
-                    <td>@p.Id</td>
-                    <td>@p.Code</td>
-                    <td>@p.Name</td>
-                    <td>@p.Status</td>
-                    <td>@p.CustomerId</td>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Описание</th>
+                    <th>Статус</th>
+                    <th>CustomerId</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var p in _projects)
+                {
+                    <tr>
+                        <td>@p.Id</td>
+                        <td>@p.Name</td>
+                        <td>@p.Description</td>
+                        <td>@p.Status</td>
+                        <td>@p.CustomerId</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 }
 
 @code {
-    private List<ProjectDto>? _projects;
+    private bool _loading = true;
     private string? _error;
+    private List<ProjectDto>? _projects;
 
     protected override async Task OnInitializedAsync()
     {
-        const string query = "query { projects { id code name status customerId } }";
+        const string query = @"
+query {
+  projects {
+    id
+    name
+    description
+    status
+    customerId
+  }
+}";
 
         try
         {
@@ -56,6 +73,10 @@ else
         catch (Exception ex)
         {
             _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
         }
     }
 
